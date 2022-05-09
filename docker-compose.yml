@@ -8,6 +8,7 @@ networks:
 volumes:
     prometheus_data: { }
     grafana_data: { }
+    loki: { }
 
 services:
     prometheus:
@@ -103,6 +104,45 @@ services:
             - monitor-net
         labels:
             org.label-schema.group: "monitoring"
+        deploy:
+            mode: global
+            resources:
+                limits:
+                    memory: 128M
+                reservations:
+                    memory: 64M
+
+    loki:
+        image: grafana/loki:2.5.0
+        ports:
+            - "3100:3100"
+        command: -config.file=/etc/loki/config.yaml
+        volumes:
+            - ./loki/config.yml:/etc/loki/config.yaml
+            - loki:/loki
+        networks:
+            - monitor-net
+        deploy:
+            mode: replicated
+            replicas: 1
+            placement:
+                constraints:
+                    - node.role == manager
+            resources:
+                limits:
+                    memory: 512M
+                reservations:
+                    memory: 64M
+
+    promtail:
+        image: grafana/promtail:2.5.0
+        volumes:
+            - /var/log:/var/log
+            - /var/lib/docker/containers:/var/lib/docker/containers
+            - ./promtail/config.yml:/etc/promtail/config.yml
+        command: -config.file=/etc/promtail/config.yml
+        networks:
+            - monitor-net
         deploy:
             mode: global
             resources:

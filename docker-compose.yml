@@ -1,0 +1,141 @@
+version: '3.7'
+
+networks:
+    monitor-net:
+        driver: overlay
+        attachable: true
+
+volumes:
+    prometheus_data: { }
+    grafana_data: { }
+
+services:
+    prometheus:
+        image: prom/prometheus:v2.35.0
+        volumes:
+            - ./prometheus:/etc/prometheus
+            - prometheus_data:/prometheus
+        command:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+            - '--web.console.libraries=/etc/prometheus/console_libraries'
+            - '--web.console.templates=/etc/prometheus/consoles'
+            - '--storage.tsdb.retention.time=200h'
+            - '--web.enable-lifecycle'
+        restart: unless-stopped
+        ports:
+            - "9090:9090"
+        networks:
+            - monitor-net
+        labels:
+            org.label-schema.group: "monitoring"
+        deploy:
+            mode: replicated
+            replicas: 1
+            placement:
+                constraints:
+                    - node.role == manager
+            resources:
+                limits:
+                    memory: 2048M
+                reservations:
+                    memory: 128M
+
+    alertmanager:
+        image: prom/alertmanager:v0.24.0
+        volumes:
+            - ./alertmanager:/etc/alertmanager
+        command:
+            - '--config.file=/etc/alertmanager/config.yml'
+            - '--storage.path=/alertmanager'
+        restart: unless-stopped
+        expose:
+            - "9093:9093"
+        networks:
+            - monitor-net
+        labels:
+            org.label-schema.group: "monitoring"
+
+    nodeexporter:
+        image: prom/node-exporter:v1.3.1
+        environment:
+            - NODE_ID={{.Node.ID}}
+        volumes:
+            - ./nodeexporter/conf/docker-entrypoint.sh:/docker-entrypoint.sh
+            - /proc:/host/proc:ro
+            - /sys:/host/sys:ro
+            - /:/rootfs:ro
+            - /etc/hostname:/etc/nodename
+        entrypoint: ["/docker-entrypoint.sh"]
+        command:
+            - '--path.procfs=/host/proc'
+            - '--path.rootfs=/rootfs'
+            - '--path.sysfs=/host/sys'
+            - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+            - '--collector.textfile.directory=/tmp/metrics/'
+            - '--no-collector.ipvs'
+        restart: unless-stopped
+        networks:
+            - monitor-net
+        labels:
+            org.label-schema.group: "monitoring"
+        deploy:
+            mode: global
+            resources:
+                limits:
+                    memory: 128M
+                reservations:
+                    memory: 64M
+
+    cadvisor:
+        image: gcr.io/cadvisor/cadvisor:v0.44.0
+        command: -logtostderr
+        volumes:
+            - /var/run/docker.sock:/var/run/docker.sock:ro
+            - /:/rootfs:ro
+            - /var/run:/var/run
+            - /sys:/sys:ro
+            - /var/lib/docker/:/var/lib/docker:ro
+        restart: unless-stopped
+        ports:
+            - "8080:8080"
+        networks:
+            - monitor-net
+        labels:
+            org.label-schema.group: "monitoring"
+        deploy:
+            mode: global
+            resources:
+                limits:
+                    memory: 128M
+                reservations:
+                    memory: 64M
+
+    grafana:
+        image: grafana/grafana:8.4.5
+        volumes:
+            - grafana_data:/var/lib/grafana
+            - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+            - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+        environment:
+            - GF_SECURITY_ADMIN_USER=${ADMIN_USER:-admin}
+            - GF_SECURITY_ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+            - GF_USERS_ALLOW_SIGN_UP=false
+        restart: unless-stopped
+        ports:
+            - "3000:3000"
+        networks:
+            - monitor-net
+        labels:
+            org.label-schema.group: "monitoring"
+        deploy:
+            mode: replicated
+            replicas: 1
+            placement:
+                constraints:
+                    - node.role == manager
+            resources:
+                limits:
+                    memory: 128M
+                reservations:
+                    memory: 64M

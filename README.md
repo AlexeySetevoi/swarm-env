@@ -33,6 +33,7 @@ Services:
 
 * prometheus (metrics database) `http://<swarm-ip>:9090`
 * grafana (visualize metrics) `http://<swarm-ip>:3000`
+* loki & promtail(logs storage) 'http://<swarm-ip>:3100'
 * node-exporter (host metrics collector)
 * cadvisor (containers metrics collector)
 * alertmanager (alerts dispatcher) `http://<swarm-ip>:9093`
